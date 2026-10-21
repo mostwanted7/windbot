@@ -66,6 +66,7 @@
     <Compile Include="Game\ChainInfo.cs" />
     <Compile Include="Game\Dialogs.cs" />
     <Compile Include="Game\Duel.cs" />
+    <Compile Include="Game\BrainBridge.cs" />
     <Compile Include="Game\GameAI.cs" />
     <Compile Include="Game\MainPhase.cs" />
     <Compile Include="Game\MainPhaseAction.cs" />

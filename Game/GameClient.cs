@@ -24,6 +24,7 @@ namespace WindBot.Game
         private string _serverHost;
         private int _serverPort;
         private int _proVersion;
+        public int Version { get { return _proVersion; } }
 
         private string _roomInfo;
 

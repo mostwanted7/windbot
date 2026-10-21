@@ -23,6 +23,7 @@
         HsPlayerChange = 0x21,
         HsWatchChange = 0x22,
         Rematch = 0xf1,
-        WaitingRematch = 0xf2
+        WaitingRematch = 0xf2,
+        Chat2 = 0xf3
     }
 }

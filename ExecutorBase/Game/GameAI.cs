@@ -16,6 +16,9 @@ namespace WindBot.Game
         public Duel Duel { get; private set; }
         public Executor Executor { get; set; }
 
+        /// <summary>Optional external decision maker; when set it is asked first and the executor is the fallback.</summary>
+        public BrainBridge Brain { get; set; }
+
         public Dialogs _dialogs;
         private System.Action<string, int> _log;
         private System.Action _surrender;
@@ -98,6 +101,11 @@ namespace WindBot.Game
         /// <returns>True if the AI should begin first, false otherwise.</returns>
         public bool OnSelectHand()
         {
+            if (Brain != null)
+            {
+                bool? first = Brain.SelectFirst();
+                if (first.HasValue) return first.Value;
+            }
             return Executor.OnSelectHand();
         }
 
@@ -227,6 +235,11 @@ namespace WindBot.Game
         /// <returns>A new BattlePhaseAction containing the action to do.</returns>
         public BattlePhaseAction OnSelectBattleCmd(BattlePhase battle)
         {
+            if (Brain != null)
+            {
+                BattlePhaseAction action = Brain.SelectBattle(battle);
+                if (action != null) return action;
+            }
             foreach (CardExecutor exec in Executor.Executors)
             {
                 if (exec.Type == ExecutorType.GoToMainPhase2 && battle.CanMainPhaseTwo && exec.Func()) // check if should enter main phase 2 directly
@@ -310,6 +323,18 @@ namespace WindBot.Game
         /// <returns>A new list containing the selected cards.</returns>
         public IList<ClientCard> OnSelectCard(IList<ClientCard> cards, int min, int max, long hint, bool cancelable)
         {
+            return OnSelectCard(cards, min, max, hint, cancelable, true);
+        }
+
+        /// <param name="askBrain">False when the brain already declined this prompt in another form (a select_unselect
+        /// it answered with a fallback), so it isn't asked the same thing twice.</param>
+        public IList<ClientCard> OnSelectCard(IList<ClientCard> cards, int min, int max, long hint, bool cancelable, bool askBrain)
+        {
+            if (Brain != null && askBrain)
+            {
+                IList<ClientCard> chosen = Brain.SelectCards("select_card", cards, min, max, hint, cancelable);
+                if (chosen != null) return chosen;
+            }
             // Check for the executor.
             IList<ClientCard> result = Executor.OnSelectCard(cards, min, max, hint, cancelable);
             if (result != null)
@@ -391,6 +416,11 @@ namespace WindBot.Game
         public int OnSelectChain(IList<ClientCard> cards, IList<long> descs, bool forced, int timing = -1)
         {
             Executor.OnSelectChain(cards);
+            if (Brain != null)
+            {
+                int chosen = Brain.SelectChain(cards, descs, forced);
+                if (chosen != BrainBridge.Fallback) return chosen;
+            }
             foreach (CardExecutor exec in Executor.Executors)
             {
                 for (int i = 0; i < cards.Count; ++i)
@@ -461,6 +491,11 @@ namespace WindBot.Game
         /// <returns>True for yes, false for no.</returns>
         public bool OnSelectEffectYn(ClientCard card, long desc)
         {
+            if (Brain != null)
+            {
+                bool? yes = Brain.SelectEffectYn(card, desc);
+                if (yes.HasValue) return yes.Value;
+            }
             foreach (CardExecutor exec in Executor.Executors)
             {
                 if (ShouldExecute(exec, card, ExecutorType.Activate, desc))
@@ -477,6 +512,11 @@ namespace WindBot.Game
         public MainPhaseAction OnSelectIdleCmd(MainPhase main)
         {
             CheckSurrender();
+            if (Brain != null)
+            {
+                MainPhaseAction action = Brain.SelectIdle(main);
+                if (action != null) return action;
+            }
             foreach (CardExecutor exec in Executor.Executors)
             {
                 if (exec.Type == ExecutorType.GoToEndPhase && main.CanEndPhase && exec.Func()) // check if should enter end phase directly
@@ -560,6 +600,11 @@ namespace WindBot.Game
         /// <returns>Index of the selected option.</returns>
         public int OnSelectOption(IList<long> options)
         {
+            if (Brain != null)
+            {
+                int chosen = Brain.SelectOption(options);
+                if (chosen >= 0) return chosen;
+            }
             int result = Executor.OnSelectOption(options);
             if (result != -1)
                 return result;
@@ -574,6 +619,12 @@ namespace WindBot.Game
         {
             int selector_selected = m_place;
             m_place = 0;
+
+            if (Brain != null)
+            {
+                int zone = Brain.SelectPlace(cardId, player, location, available);
+                if (zone > 0) return zone;
+            }
 
             int executor_selected = Executor.OnSelectPlace(cardId, player, location, available);
 
@@ -595,6 +646,11 @@ namespace WindBot.Game
         /// <returns>Selected position.</returns>
         public CardPosition OnSelectPosition(int cardId, IList<CardPosition> positions)
         {
+            if (Brain != null)
+            {
+                CardPosition position = Brain.SelectPosition(cardId, positions);
+                if (positions.Contains(position)) return position;
+            }
             CardPosition selector_selected = GetSelectedPosition();
 
             CardPosition executor_selected = Executor.OnSelectPosition(cardId, positions);
@@ -619,6 +675,11 @@ namespace WindBot.Game
         /// <returns></returns>
         public IList<ClientCard> OnSelectSum(IList<ClientCard> cards, int sum, int min, int max, long hint, bool mode)
         {
+            if (Brain != null)
+            {
+                IList<ClientCard> chosen = Brain.SelectSum(cards, sum, min, max, hint, mode);
+                if (chosen != null) return chosen;
+            }
             IList<ClientCard> selected = Executor.OnSelectSum(cards, sum, min, max, hint, mode);
             if (selected != null)
             {
@@ -785,6 +846,11 @@ namespace WindBot.Game
         /// <returns>A new list containing the tributed cards.</returns>
         public IList<ClientCard> OnSelectTribute(IList<ClientCard> cards, int min, int max, long hint, bool cancelable)
         {
+            if (Brain != null)
+            {
+                IList<ClientCard> chosen = Brain.SelectCards("tribute", cards, min, max, hint, cancelable);
+                if (chosen != null) return chosen;
+            }
             IList<ClientCard> selected = Executor.OnSelectCard(cards, min, max, hint, cancelable);
             if (selected != null)
             {
@@ -811,6 +877,11 @@ namespace WindBot.Game
         /// <returns>True for yes, false for no.</returns>
         public bool OnSelectYesNo(long desc)
         {
+            if (Brain != null)
+            {
+                bool? yes = Brain.SelectYesNo(desc);
+                if (yes.HasValue) return yes.Value;
+            }
             if (m_yesno != -1)
                 return m_yesno > 0;
             return Executor.OnSelectYesNo(desc);
@@ -822,6 +893,11 @@ namespace WindBot.Game
         /// <returns>True for yes, false for no.</returns>
         public bool OnSelectBattleReplay()
         {
+            if (Brain != null)
+            {
+                bool? yes = Brain.SelectYesNo(30);
+                if (yes.HasValue) return yes.Value;
+            }
             return Executor.OnSelectBattleReplay();
         }
 
@@ -832,6 +908,11 @@ namespace WindBot.Game
         /// <returns>Id of the selected card.</returns>
         public int OnAnnounceCard(IList<int> avail)
         {
+            if (Brain != null)
+            {
+                int declared = Brain.AnnounceCard(avail);
+                if (declared != 0) return declared;
+            }
             int selected = Executor.OnAnnounceCard(avail);
             if (avail.Contains(selected))
                 return selected;
@@ -1141,6 +1222,11 @@ namespace WindBot.Game
         /// <returns>Index of the selected number.</returns>
         public int OnAnnounceNumber(IList<int> numbers)
         {
+            if (Brain != null)
+            {
+                int chosen = Brain.AnnounceNumber(numbers);
+                if (chosen >= 0) return chosen;
+            }
             if (numbers.Contains(m_number))
                 return numbers.IndexOf(m_number);
 
@@ -1155,6 +1241,11 @@ namespace WindBot.Game
         /// <returns>A list of the selected attributes.</returns>
         public virtual IList<CardAttribute> OnAnnounceAttrib(int count, IList<CardAttribute> attributes)
         {
+            if (Brain != null)
+            {
+                IList<int> chosen = Brain.AnnounceFlags("announce_attrib", count, attributes.Select(a => (long)a).ToList());
+                if (chosen != null) return chosen.Select(i => attributes[i]).ToList();
+            }
             IList<CardAttribute> foundAttributes = m_attributes.Where(attributes.Contains).ToList();
             if (foundAttributes.Count > 0)
                 return foundAttributes;
@@ -1170,6 +1261,11 @@ namespace WindBot.Game
         /// <returns>A list of the selected races.</returns>
         public virtual IList<CardRace> OnAnnounceRace(int count, IList<CardRace> races)
         {
+            if (Brain != null)
+            {
+                IList<int> chosen = Brain.AnnounceFlags("announce_race", count, races.Select(r => (long)r).ToList());
+                if (chosen != null) return chosen.Select(i => races[i]).ToList();
+            }
             IList<CardRace> foundRaces = m_races.Where(races.Contains).ToList();
             if (foundRaces.Count > 0)
                 return foundRaces;
