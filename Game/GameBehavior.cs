@@ -201,8 +201,8 @@ namespace WindBot.Game
             _messages.Add(GameMessage.Summoned, OnSummoned);
             _messages.Add(GameMessage.SpSummoning, OnSpSummoning);
             _messages.Add(GameMessage.SpSummoned, OnSpSummoned);
-            _messages.Add(GameMessage.FlipSummoning, OnSummoning);
-            _messages.Add(GameMessage.FlipSummoned, OnSummoned);
+            _messages.Add(GameMessage.FlipSummoning, OnFlipSummoning);
+            _messages.Add(GameMessage.FlipSummoned, OnFlipSummoned);
         }
 
         private void OnJoinGame(BinaryReader packet)
@@ -2203,17 +2203,58 @@ namespace WindBot.Game
 
         private void OnSummoning(BinaryReader packet)
         {
+            Summoning(packet, false);
+        }
+
+        private void OnFlipSummoning(BinaryReader packet)
+        {
+            Summoning(packet, true);
+        }
+
+        private void Summoning(BinaryReader packet, bool flip)
+        {
             _duel.LastSummonedCards.Clear();
             int code = packet.ReadInt32();
             LocationInfo info = new LocationInfo(packet, _duel.IsFirst);
             ClientCard card = _duel.GetCard(info.controler, (CardLocation)info.location, info.sequence);
             _duel.SummoningCards.Add(card);
             _duel.LastSummonPlayer = info.controler;
-            BrainEvent("summoning", new Dictionary<string, object> { { "id", code }, { "to", BrainLoc(info) }, { "special", false } });
+            BrainSummoning(code, info, false, flip);
+        }
+
+        // Brain: a Summon outside a chain has a negation window ("window"), and "summoned" says it went through.
+        private void BrainSummoning(int code, LocationInfo info, bool special, bool flip)
+        {
+            Dictionary<string, object> ev = new Dictionary<string, object> { { "id", code }, { "to", BrainLoc(info) }, { "special", special }, { "window", _duel.CurrentChain.Count == 0 } };
+            if (flip) ev["flip"] = true;
+            BrainEvent("summoning", ev);
+        }
+
+        private void BrainSummoned(bool special, bool flip)
+        {
+            foreach (ClientCard card in _duel.SummoningCards)
+            {
+                if (card == null) continue;
+                Dictionary<string, object> to = new Dictionary<string, object> { { "c", card.Controller }, { "l", (int)card.Location }, { "s", card.Sequence }, { "p", card.Position } };
+                Dictionary<string, object> ev = new Dictionary<string, object> { { "id", card.Id }, { "to", to }, { "special", special } };
+                if (flip) ev["flip"] = true;
+                BrainEvent("summoned", ev);
+            }
         }
 
         private void OnSummoned(BinaryReader packet)
         {
+            Summoned(false);
+        }
+
+        private void OnFlipSummoned(BinaryReader packet)
+        {
+            Summoned(true);
+        }
+
+        private void Summoned(bool flip)
+        {
+            BrainSummoned(false, flip);
             foreach (ClientCard card in _duel.SummoningCards)
             {
                 _duel.LastSummonedCards.Add(card);
@@ -2230,11 +2271,12 @@ namespace WindBot.Game
             ClientCard card = _duel.GetCard(info.controler, (CardLocation)info.location, info.sequence);
             _duel.SummoningCards.Add(card);
             _duel.LastSummonPlayer = info.controler;
-            BrainEvent("summoning", new Dictionary<string, object> { { "id", code }, { "to", BrainLoc(info) }, { "special", true } });
+            BrainSummoning(code, info, true, false);
         }
 
         private void OnSpSummoned(BinaryReader packet)
         {
+            BrainSummoned(true, false);
             foreach (ClientCard card in _duel.SummoningCards)
             {
                 card.IsSpecialSummoned = true;
